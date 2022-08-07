@@ -2,6 +2,7 @@
 """Generates a svg world map on the population of countries last year."""
 
 from datetime import datetime
+from contextlib import closing
 from typing import Dict, IO, List
 import csv
 import io
@@ -12,22 +13,18 @@ import bs4
 import requests
 
 
-def get_population_data() -> requests.Response:
-    # one can view the populaton data at https://data.worldbank.org/indicator/SP.POP.TOTL
+def get_content_of_population_data() -> str:
+    # one can view the population data at https://data.worldbank.org/indicator/SP.POP.TOTL
     r: requests.Response = requests.get(
         "https://api.worldbank.org/v2/en/indicator/SP.POP.TOTL",
         params={"downloadformat": "csv"},
     )
-    return r
-
-
-def read_content_from_response(r: requests.Response) -> str:
     # the way to manage requested file in memory refers to https://stackoverflow.com/a/22385790
-    with zipfile.ZipFile(io.BytesIO(r.content)) as archive:
+    with closing(r), zipfile.ZipFile(io.BytesIO(r.content)) as archive:
         try:
             # There should be 3 csv files:
             # 1 population file with prefix "API_SP.POP.TOTL" and 2 metadata file with prefix "Metadata",
-            # we'll focus on the populaton file.
+            # we'll focus on the population file.
             (pop_file,) = filter(
                 lambda x: x.filename.startswith("API_SP.POP.TOTL"), archive.infolist()
             )
@@ -43,8 +40,8 @@ def read_content_from_response(r: requests.Response) -> str:
 
 def get_country_code_2_to_3_table() -> Dict[str, str]:
     # Look up the conversion table from IBAN.com.
-    r: requests.Response = requests.get("https://www.iban.com/country-codes")
-    soup = bs4.BeautifulSoup(r.content, "lxml")
+    with requests.get("https://www.iban.com/country-codes") as r:
+        soup = bs4.BeautifulSoup(r.content, "lxml")
 
     country_table: bs4.Tag = soup.find(
         "table", class_=["table", "table-bordered", "downloads", "tablesorter"]
@@ -88,8 +85,7 @@ def skip_line(f: IO, line_count: int) -> None:
 
 
 def main() -> None:
-    with get_population_data() as r:
-        content = read_content_from_response(r)
+    content: str = get_content_of_population_data()
 
     # About the structure of content:
     # 1. Line 3 contains last update time, line 5 are the field names,
